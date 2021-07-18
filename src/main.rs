@@ -1,5 +1,5 @@
 use crate::shipping::{ShippingMethod, Address};
-use crate::activity::Activity;
+use crate::activity::{FullMinusOne, FixedPrice, Activity};
 use crate::coupon::Coupon;
 use crate::order::{OrderItem, StockKeepingUnit, Order};
 
@@ -48,7 +48,7 @@ fn main() {
         String::from("10001200074412300015984"),
     ];
 
-    let full_minus_one_activity = Activity::FullMinusOne {
+    let full_minus_one_activity = FullMinusOne {
         full_number: 4,
         skus: full_minus_one_activity_skus,
     };
@@ -59,13 +59,13 @@ fn main() {
         String::from("10001200024412300010988"),
     ];
 
-    let fixed_price = Activity::FixedPrice {
+    let fixed_price = FixedPrice {
         fixed_number: 3,
         fixed_price: dec!(50.00),
         skus: fixed_price_activity_skus,
     };
 
-    let activities = vec![full_minus_one_activity, fixed_price];
+    let activities: Vec<Box<dyn Activity>> = vec![Box::new(full_minus_one_activity), Box::new(fixed_price)];
 
     let product_coupon = Coupon::ProductCoupon(dec!(5));
 

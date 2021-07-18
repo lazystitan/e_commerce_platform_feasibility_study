@@ -1,7 +1,7 @@
-use crate::activity::Activity;
 use crate::coupon::Coupon;
 use crate::shipping::ShippingMethod;
 use rust_decimal::prelude::*;
+use crate::activity::Activity;
 
 /// A trait to allow other entity to change order's inner status which intend to.
 pub trait ApplyToOrder {
@@ -85,7 +85,7 @@ impl Order {
     /// Should be the second step of calculation, since the activities
     /// may have an impact on the value of the skus. Gen the value of
     /// activity's bonus of the order.
-    pub fn process_activity(&mut self, activities: &Vec<Activity>) {
+    pub fn process_activity(&mut self, activities: &Vec<Box<dyn Activity>>) {
         for activity in activities {
             activity.apply_to_order(self);
         }
