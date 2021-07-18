@@ -15,20 +15,20 @@ pub trait ActivityFilter<'a> {
     }
 }
 
-pub trait Activity<'a>: ActivityFilter<'a> + ApplyToOrder {}
+pub trait ActivityBehavior<'a>: ActivityFilter<'a> + ApplyToOrder {}
 
-pub struct FullMinusOne {
-    pub(crate) full_number: u32,
-    pub(crate) skus: Vec<String>,
+pub struct FullMinusOneActivity {
+    pub full_number: u32,
+    pub skus: Vec<String>,
 }
 
-impl <'a> ActivityFilter<'a> for FullMinusOne {
+impl <'a> ActivityFilter<'a> for FullMinusOneActivity {
     fn skus(&self) -> &Vec<String> {
         &self.skus
     }
 }
 
-impl ApplyToOrder for FullMinusOne {
+impl ApplyToOrder for FullMinusOneActivity {
     fn apply_to_order(&self, order: &mut Order) {
         let mut in_activity_items = self.filter_activity_order_items(order);
 
@@ -39,11 +39,7 @@ impl ApplyToOrder for FullMinusOne {
 
         if in_activity_items_number >= self.full_number {
             in_activity_items.sort_by(|pre_sku, next_sku| {
-                if pre_sku.sku.shop_price < next_sku.sku.shop_price {
-                    Ordering::Less
-                } else {
-                    Ordering::Greater
-                }
+                pre_sku.sku.shop_price.cmp(&next_sku.sku.shop_price)
             });
 
             let mut available_items_number =
@@ -66,21 +62,21 @@ impl ApplyToOrder for FullMinusOne {
     }
 }
 
-impl <'a> Activity<'a> for FullMinusOne {}
+impl <'a> ActivityBehavior<'a> for FullMinusOneActivity {}
 
-pub struct FixedPrice {
-    pub(crate) fixed_number: u32,
-    pub(crate) fixed_price: Decimal,
-    pub(crate) skus: Vec<String>,
+pub struct FixedPriceActivity {
+    pub fixed_number: u32,
+    pub fixed_price: Decimal,
+    pub skus: Vec<String>,
 }
 
-impl<'a> ActivityFilter<'a> for FixedPrice {
+impl<'a> ActivityFilter<'a> for FixedPriceActivity {
     fn skus(&self) -> &Vec<String> {
         &self.skus
     }
 }
 
-impl ApplyToOrder for FixedPrice {
+impl ApplyToOrder for FixedPriceActivity {
     fn apply_to_order(&self, order: &mut Order) {
         let mut in_activity_items = self.filter_activity_order_items(order);
 
@@ -92,11 +88,7 @@ impl ApplyToOrder for FixedPrice {
         if in_activity_items_number >= self.fixed_number {
             let times = in_activity_items_number / self.fixed_number;
             in_activity_items.sort_by(|pre_sku, next_sku| {
-                if pre_sku.sku.shop_price < next_sku.sku.shop_price {
-                    Ordering::Less
-                } else {
-                    Ordering::Greater
-                }
+                pre_sku.sku.shop_price.cmp(&next_sku.sku.shop_price)
             });
 
             let mut available_items_number =
@@ -122,4 +114,4 @@ impl ApplyToOrder for FixedPrice {
     }
 }
 
-impl <'a> Activity<'a> for FixedPrice {}
+impl <'a> ActivityBehavior<'a> for FixedPriceActivity {}
