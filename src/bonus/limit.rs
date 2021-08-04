@@ -1,10 +1,13 @@
+use std::cmp::Ordering;
+use std::rc::Rc;
+
+use rust_decimal::Decimal;
+
 use crate::attribute::Attribute;
 use crate::order::Order;
 use crate::sku::{BoughtSkuSet, Sku, SkuName};
 use crate::user::{User, UserName};
-use rust_decimal::Decimal;
-use std::rc::Rc;
-use std::cmp::Ordering;
+use rust_decimal::prelude::ToPrimitive;
 
 /// Condition need to meet to apply
 pub enum ApplyConditionLimit {
@@ -58,12 +61,14 @@ pub struct ProductApplyObjectConfig {
     product_set_limit: ProductSetLimit,
     bonus_form_limit: BonusFormLimit,
     apply_range_limit: ApplyRangeLimit,
+    superposition: SuperpositionLimit
 }
 
 pub struct ShippingFeeApplyObjectConfig {
     apply_condition_limit: ApplyConditionLimit,
     product_set_limit: ProductSetLimit,
     bonus_form_limit: BonusFormLimit,
+    superposition: SuperpositionLimit
 }
 
 pub enum ApplyObjectLimit {
@@ -129,57 +134,85 @@ impl ApplyObjectLimit {
         };
     }
 
+    fn apply_times<'a>(&self, items: &BoughtSkuSet<'a>) -> u32 {
+        let s;
+        let config;
+        match self {
+            ApplyObjectLimit::Product(c) => {
+                s = &c.superposition;
+                config = &c.apply_condition_limit;
+            },
+            ApplyObjectLimit::ShippingFee(c) => {
+                s = &c.superposition;
+                config = &c.apply_condition_limit;
+            },
+            ApplyObjectLimit::ProductAndShippingFee { .. } => {
+                unimplemented!()
+            }
+        };
+        s.apply_times(items, config)
+    }
+
+    fn product_percent_form_apply(&self, percent_value: Decimal, order: &mut Order, config: &ProductApplyObjectConfig) {
+        match config.apply_range_limit {
+            ApplyRangeLimit::None => {
+                order.activity_bonus += order.items_amount * percent_value
+            }
+            ApplyRangeLimit::Number(mut n) => {
+                let mut filtered_skus = config.product_set_limit.filter(&order.items);
+                filtered_skus.sort_by(|&(s1, _), &(s2, _)| {
+                    return s1.price().cmp(&s2.price());
+                });
+
+                n = self.apply_times(&order.items) * n;
+
+                let mut amount = dec!(0);
+                for (sku, num) in filtered_skus {
+                    if num < n {
+                        amount += sku.price() * Decimal::from(num);
+                    } else {
+                        amount += sku.price() * Decimal::from(n);
+                    }
+                    n -= num;
+                }
+                order.activity_bonus += amount * percent_value
+            }
+        }
+    }
+
+    fn product_amount_form_apply(&self, amount_value: Decimal, order: &mut Order, config: &ProductApplyObjectConfig) {
+        match config.apply_range_limit {
+            ApplyRangeLimit::None | ApplyRangeLimit::Number(_) => {
+                order.activity_bonus += amount_value * Decimal::from(self.apply_times(&order.items))
+            }
+        }
+    }
+
     pub fn apply(&self, order: &mut Order) {
         match self {
             ApplyObjectLimit::Product(c) => {
                 match c.bonus_form_limit {
                     BonusFormLimit::Percent(r) => {
-                        match c.apply_range_limit {
-                            ApplyRangeLimit::None => {
-                                order.activity_bonus += order.items_amount * r
-                            }
-                            ApplyRangeLimit::Number(mut n) => {
-                                let mut filtered_skus = c.product_set_limit.filter(&order.items);
-                                filtered_skus.sort_by(|&(s1, _), &(s2, _)| {
-                                    return s1.price().cmp(&s2.price())
-                                });
-
-                                let mut amount = dec!(0);
-                                for (sku, num) in filtered_skus {
-                                    if num < n {
-                                        amount += sku.price() * Decimal::from(num);
-                                    } else {
-                                        amount += sku.price() * Decimal::from(n);
-                                    }
-                                    n -= num;
-                                }
-                                order.activity_bonus += amount * r
-                            }
-                        }
-
+                        self.product_percent_form_apply(r, order, c)
                     }
                     BonusFormLimit::Amount(v) => {
-                        match c.apply_range_limit {
-                            ApplyRangeLimit::None | ApplyRangeLimit::Number(_) => {
-                                order.activity_bonus += v
-                            }
-                        }
+                        self.product_amount_form_apply(v, order, c)
                     }
                 }
             }
             ApplyObjectLimit::ShippingFee(c) => {
                 match c.bonus_form_limit {
                     BonusFormLimit::Percent(r) => {
-                        order.activity_bonus += order.shipping_fee * r;
+                        order.activity_bonus += order.shipping_fee * r * Decimal::from(self.apply_times(&order.items));
                     }
                     BonusFormLimit::Amount(v) => {
-                        order.activity_bonus += v;
+                        order.activity_bonus += v * Decimal::from(self.apply_times(&order.items));
                     }
                 }
             }
             ApplyObjectLimit::ProductAndShippingFee { .. } => {
                 //TODO not consider now
-                return;
+                unimplemented!();
             }
         }
     }
@@ -233,4 +266,31 @@ pub enum VisibilityLimit {
 pub enum UserRelatedLimit {
     No,
     Yes(UserName),
+}
+
+pub enum SuperpositionLimit {
+    Times(u32),
+    None,
+}
+
+impl SuperpositionLimit {
+    fn apply_times<'a>(&self, items: &BoughtSkuSet<'a>, config: &ApplyConditionLimit ) -> u32 {
+        match self {
+            SuperpositionLimit::Times(times) => times.clone(),
+            SuperpositionLimit::None => {
+                match config {
+                    ApplyConditionLimit::None => 1,
+                    ApplyConditionLimit::Amount(amount_condition) => {
+                        (items.total_amount()/ amount_condition).to_u32().unwrap()
+                    }
+                    ApplyConditionLimit::Number(number_condition) => {
+                        items.total_number() / number_condition
+                    }
+                    ApplyConditionLimit::AmountAndNumber(_, _) => {
+                        unimplemented!()
+                    }
+                }
+            }
+        }
+    }
 }

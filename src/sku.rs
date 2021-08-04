@@ -123,4 +123,10 @@ impl<'a> BoughtSkuSet<'a> {
             sku.shop_price * Decimal::from(number)
         }).sum()
     }
+
+    pub fn total_number(&self) -> u32 {
+        self.skus.iter().map(|(_sku, &number)| {
+            number
+        }).sum()
+    }
 }
