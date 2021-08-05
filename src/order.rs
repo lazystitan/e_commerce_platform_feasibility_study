@@ -3,6 +3,7 @@ use crate::shipping::ShippingMethod;
 use rust_decimal::prelude::*;
 use crate::user::User;
 use crate::sku::{StockKeepingUnit, BoughtSkuSet};
+use std::collections::HashMap;
 
 /// A trait to allow other entity to change order's inner status which intend to.
 pub trait ApplyToOrder {
@@ -22,7 +23,7 @@ pub struct Order<'a> {
     pub coupon_bonus: Decimal,
     pub activity_bonus: Decimal,
     pub shipping_fee: Decimal,
-    pub items_amount: Decimal,
+    items_amount: Decimal,
     pub total_amount: Decimal,
 
     status_coupon: bool,
@@ -51,21 +52,19 @@ impl <'a> Order<'a> {
         }
     }
 
-    /// Should be the first step of calculation, gen the value of
-    /// all skus of the order.
-    pub fn process_items(&mut self) {
-        self.items_amount = self.items.total_amount();
+    pub fn process_basic(&mut self) {
+        self.process_items();
     }
 
-    /// Should be the second step of calculation, since the activities
-    /// may have an impact on the value of the skus. Gen the value of
-    /// activity's bonus of the order.
-    // pub fn process_activity(&mut self, activities: &Vec<Box<dyn ActivityBehavior>>) {
-    //     for activity in activities {
-    //         activity.apply_to_order(self);
-    //     }
-    //     self.status_activity = true;
-    // }
+    pub fn items_amount(&self) -> Decimal {
+        self.items_amount
+    }
+
+    /// Should be the first step of calculation, gen the value of
+    /// all skus of the order.
+    fn process_items(&mut self) {
+        self.items_amount = self.items.total_amount();
+    }
 
     /// Should be the third step of calculation, since the coupons
     /// may have an impact on shipping fee. Gen the value of shipping
@@ -76,13 +75,8 @@ impl <'a> Order<'a> {
         self.status_shipping = true;
     }
 
-    /// Should be the fourth step of calculation. Gen the value of
-    /// coupon bonus of the order.
-    pub fn process_coupon(&mut self, coupons: &Vec<Coupon>) {
-        for coupon in coupons {
-            coupon.apply_to_order(self);
-        }
-        self.status_coupon = true;
+    pub fn apply(&mut self, applicable: impl ApplyToOrder) {
+        applicable.apply_to_order(self);
     }
 
     /// Should be the last step of calculation. Gen the value of how

@@ -1,15 +1,14 @@
 use std::cmp::Ordering;
 use std::rc::Rc;
 
-use rust_decimal::Decimal;
+use rust_decimal::prelude::*;
 
 use crate::attribute::Attribute;
 use crate::order::Order;
 use crate::sku::{BoughtSkuSet, Sku, SkuName};
 use crate::user::{User, UserName};
-use rust_decimal::prelude::ToPrimitive;
 
-/// Condition need to meet to apply
+/// Condition of apply
 pub enum ApplyConditionLimit {
     None,
     Amount(Decimal),
@@ -17,6 +16,7 @@ pub enum ApplyConditionLimit {
     AmountAndNumber(Decimal, u32),
 }
 
+/// Condition of apply
 pub enum ProductSetLimit {
     None,
     SKUSet(Vec<SkuName>),
@@ -43,14 +43,15 @@ impl ProductSetLimit {
     }
 }
 
+/// Bonus form
 pub enum BonusFormLimit {
     Percent(Decimal),
     Amount(Decimal),
 }
 
-/// Only for bonus applied to product, how many product in
-/// products which already meet the product set limit can
-/// apply bonus.
+/// Only for bonus which applied to product, including the info of
+/// which ones in products that already meet the product set
+/// limit can apply bonus.
 pub enum ApplyRangeLimit {
     None,
     Number(u32),
@@ -61,14 +62,14 @@ pub struct ProductApplyObjectConfig {
     product_set_limit: ProductSetLimit,
     bonus_form_limit: BonusFormLimit,
     apply_range_limit: ApplyRangeLimit,
-    superposition: SuperpositionLimit
+    superposition: SuperpositionLimit,
 }
 
 pub struct ShippingFeeApplyObjectConfig {
     apply_condition_limit: ApplyConditionLimit,
     product_set_limit: ProductSetLimit,
     bonus_form_limit: BonusFormLimit,
-    superposition: SuperpositionLimit
+    superposition: SuperpositionLimit,
 }
 
 pub enum ApplyObjectLimit {
@@ -111,21 +112,11 @@ impl ApplyObjectLimit {
                     .iter()
                     .map(|&(sku, num)| Decimal::from(num) * sku.price())
                     .sum();
-
-                if amount > *limit_amount {
-                    true
-                } else {
-                    false
-                }
+                amount > *limit_amount
             }
             ApplyConditionLimit::Number(limit_number) => {
                 let number: u32 = filtered_skus.iter().map(|&(_sku, num)| num).sum();
-
-                if number > *limit_number {
-                    true
-                } else {
-                    false
-                }
+                number > *limit_number
             }
             ApplyConditionLimit::AmountAndNumber(..) => {
                 //TODO not consider now
@@ -141,11 +132,11 @@ impl ApplyObjectLimit {
             ApplyObjectLimit::Product(c) => {
                 s = &c.superposition;
                 config = &c.apply_condition_limit;
-            },
+            }
             ApplyObjectLimit::ShippingFee(c) => {
                 s = &c.superposition;
                 config = &c.apply_condition_limit;
-            },
+            }
             ApplyObjectLimit::ProductAndShippingFee { .. } => {
                 unimplemented!()
             }
@@ -153,68 +144,96 @@ impl ApplyObjectLimit {
         s.apply_times(items, config)
     }
 
-    fn product_percent_form_apply(&self, percent_value: Decimal, order: &mut Order, config: &ProductApplyObjectConfig) {
-        match config.apply_range_limit {
-            ApplyRangeLimit::None => {
-                order.activity_bonus += order.items_amount * percent_value
-            }
-            ApplyRangeLimit::Number(mut n) => {
-                let mut filtered_skus = config.product_set_limit.filter(&order.items);
-                filtered_skus.sort_by(|&(s1, _), &(s2, _)| {
-                    return s1.price().cmp(&s2.price());
-                });
+    fn product_percent_form_apply(
+        &self,
+        percent_value: Decimal,
+        order: &Order,
+    ) -> Result<Decimal, &'static str> {
+        if let ApplyObjectLimit::Product(config) = self {
+            let times = self.apply_times(&order.items);
 
-                n = self.apply_times(&order.items) * n;
-
-                let mut amount = dec!(0);
-                for (sku, num) in filtered_skus {
-                    if num < n {
-                        amount += sku.price() * Decimal::from(num);
+            match config.apply_range_limit {
+                ApplyRangeLimit::None => {
+                    let items_amount =  order.items_amount();
+                    let bonus = items_amount * percent_value * Decimal::from(times);
+                    if bonus > items_amount {
+                        Ok(items_amount)
                     } else {
-                        amount += sku.price() * Decimal::from(n);
+                        Ok(bonus)
                     }
-                    n -= num;
                 }
-                order.activity_bonus += amount * percent_value
+                ApplyRangeLimit::Number(mut n) => {
+                    let mut filtered_skus = config.product_set_limit.filter(&order.items);
+                    filtered_skus.sort_by(|&(s1, _), &(s2, _)| {
+                        return s1.price().cmp(&s2.price());
+                    });
+
+                    n = times * n;
+                    let mut amount = dec!(0);
+                    for (sku, num) in filtered_skus {
+                        if num < n {
+                            amount += sku.price() * Decimal::from(num);
+                        } else {
+                            amount += sku.price() * Decimal::from(n);
+                        }
+                        n -= num;
+                    }
+                    Ok(amount * percent_value)
+                }
             }
+        } else {
+            Err("Method not suitable!")
         }
     }
 
-    fn product_amount_form_apply(&self, amount_value: Decimal, order: &mut Order, config: &ProductApplyObjectConfig) {
-        match config.apply_range_limit {
-            ApplyRangeLimit::None | ApplyRangeLimit::Number(_) => {
-                order.activity_bonus += amount_value * Decimal::from(self.apply_times(&order.items))
+    fn product_amount_form_apply(
+        &self,
+        amount_value: Decimal,
+        order: &Order,
+    ) -> Result<Decimal, &'static str> {
+        if let ApplyObjectLimit::Product(config) = self {
+            match config.apply_range_limit {
+                ApplyRangeLimit::None | ApplyRangeLimit::Number(_) => {
+                    let items_amount = order.items_amount();
+                    let bonus = amount_value * Decimal::from(self.apply_times(&order.items));
+                    if bonus > items_amount {
+                        Ok(items_amount)
+                    } else {
+                        Ok(bonus)
+                    }
+                }
             }
+        } else {
+            Err("Method not suitable!")
         }
     }
 
-    pub fn apply(&self, order: &mut Order) {
+    pub fn charge(&self, order: &Order) -> Decimal {
+        let bonus;
         match self {
-            ApplyObjectLimit::Product(c) => {
-                match c.bonus_form_limit {
-                    BonusFormLimit::Percent(r) => {
-                        self.product_percent_form_apply(r, order, c)
-                    }
-                    BonusFormLimit::Amount(v) => {
-                        self.product_amount_form_apply(v, order, c)
-                    }
+            ApplyObjectLimit::Product(c) => match c.bonus_form_limit {
+                BonusFormLimit::Percent(r) => {
+                    bonus = self.product_percent_form_apply(r, order).unwrap()
                 }
-            }
-            ApplyObjectLimit::ShippingFee(c) => {
-                match c.bonus_form_limit {
-                    BonusFormLimit::Percent(r) => {
-                        order.activity_bonus += order.shipping_fee * r * Decimal::from(self.apply_times(&order.items));
-                    }
-                    BonusFormLimit::Amount(v) => {
-                        order.activity_bonus += v * Decimal::from(self.apply_times(&order.items));
-                    }
+                BonusFormLimit::Amount(v) => {
+                    bonus = self.product_amount_form_apply(v, order).unwrap()
                 }
-            }
+            },
+            ApplyObjectLimit::ShippingFee(c) => match c.bonus_form_limit {
+                BonusFormLimit::Percent(r) => {
+                    bonus =
+                        order.shipping_fee * r * Decimal::from(self.apply_times(&order.items));
+                }
+                BonusFormLimit::Amount(v) => {
+                    bonus = v * Decimal::from(self.apply_times(&order.items));
+                }
+            },
             ApplyObjectLimit::ProductAndShippingFee { .. } => {
                 //TODO not consider now
                 unimplemented!();
             }
         }
+        bonus
     }
 }
 
@@ -274,19 +293,20 @@ pub enum SuperpositionLimit {
 }
 
 impl SuperpositionLimit {
-    fn apply_times<'a>(&self, items: &BoughtSkuSet<'a>, config: &ApplyConditionLimit ) -> u32 {
+    fn apply_times<'a>(&self, items: &BoughtSkuSet<'a>, config: &ApplyConditionLimit) -> u32 {
         match self {
             SuperpositionLimit::Times(times) => times.clone(),
             SuperpositionLimit::None => {
                 match config {
                     ApplyConditionLimit::None => 1,
                     ApplyConditionLimit::Amount(amount_condition) => {
-                        (items.total_amount()/ amount_condition).to_u32().unwrap()
+                        (items.total_amount() / amount_condition).to_u32().unwrap()
                     }
                     ApplyConditionLimit::Number(number_condition) => {
                         items.total_number() / number_condition
                     }
                     ApplyConditionLimit::AmountAndNumber(_, _) => {
+                        //TODO not consider now
                         unimplemented!()
                     }
                 }

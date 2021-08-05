@@ -1,10 +1,11 @@
+use limit::*;
+
 use crate::order::{ApplyToOrder, Order};
 
 mod limit;
 
-use limit::*;
-
 struct Country(String);
+
 struct Domain(String);
 
 enum BonusOrigin {
@@ -12,7 +13,7 @@ enum BonusOrigin {
     ReturnCompensation,
     OutOfStockCompensation,
     CustomerServiceStaff,
-    MarketingOperationStaff
+    MarketingOperationStaff,
 }
 
 struct Bonus {
@@ -24,16 +25,15 @@ struct Bonus {
     optional: OptionalLimit,
     visibility: VisibilityLimit,
     user_related: UserRelatedLimit,
-    origin: BonusOrigin
+    origin: BonusOrigin,
 }
 
 struct BonusApplyError;
 
-impl Bonus {
-}
+impl Bonus {}
 
 impl ApplyToOrder for Bonus {
-    fn apply_to_order(&self, order: &mut Order){
+    fn apply_to_order(&self, order: &mut Order) {
         let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
         if !self.time.include(now) {
@@ -46,11 +46,13 @@ impl ApplyToOrder for Bonus {
             return;
         }
 
-        if !self.apply_object_info.is_meet_condition( &order.items) {
+        if !self.apply_object_info.is_meet_condition(&order.items) {
             eprintln!("not meet apply condition");
             return;
         }
 
-        self.apply_object_info.apply(order);
+        let bonus = self.apply_object_info.charge(order);
+
+
     }
 }
