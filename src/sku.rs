@@ -11,11 +11,11 @@ pub struct StockKeepingUnit<'a> {
     sku: SkuName,
     shop_price: Decimal,
     // pub market_price: Decimal,
-    weight: u32,
+    weight: u32, //g
     attributes: HashSet<&'a Attr>,
 }
 
-/// Sku is considered unique enough for it's name(or id)
+/// Sku is considered unique enough by it's name(or id)
 impl<'a> Hash for StockKeepingUnit<'a> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.sku.hash(state)
@@ -24,11 +24,7 @@ impl<'a> Hash for StockKeepingUnit<'a> {
 
 impl<'a> PartialEq for StockKeepingUnit<'a> {
     fn eq(&self, other: &Self) -> bool {
-        if self.name() == other.name() {
-            true
-        } else {
-            false
-        }
+        self.name() == other.name()
     }
 }
 

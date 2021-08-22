@@ -8,6 +8,7 @@ mod bonus;
 mod user;
 mod sku;
 mod attribute;
+mod unique_type;
 
 fn main() {
 
