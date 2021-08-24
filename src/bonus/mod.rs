@@ -1,6 +1,7 @@
 use limit::*;
 
 use crate::order::{ApplyToOrder, Order};
+use crate::bonus::limit::order_unrelated_limits::CanApplyByOrderUnrelatedInfo;
 
 mod limit;
 
@@ -16,42 +17,28 @@ enum BonusOrigin {
     MarketingOperationStaff,
 }
 
-struct Bonus {
+struct Bonus<T>
+where T: CanApplyByOrderUnrelatedInfo
+{
     country: Country,
     domain: Domain,
     apply_object_info: ApplyObjectLimit,
-    time: TimeLimit,
-    use_time: UseTimeLimit,
-    optional: OptionalLimit,
-    visibility: VisibilityLimit,
-    user_related: UserRelatedLimit,
+    order_unrelated_limits: T,
     origin: BonusOrigin,
 }
 
 struct BonusApplyError;
 
-impl Bonus {}
-
-impl ApplyToOrder for Bonus {
+impl <T:CanApplyByOrderUnrelatedInfo> ApplyToOrder for Bonus<T> {
     fn apply_to_order(&self, order: &mut Order) {
-        let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+        // self.order_unrelated_limits.can_apply();
 
-        if !self.time.include(now) {
-            eprintln!("expired");
-            return;
-        }
+        // if !self.apply_object_info.is_meet_condition(&order.items) {
+        //     eprintln!("not meet apply condition");
+        //     return;
+        // }
 
-        if self.use_time.is_exceed_max(&order.user) {
-            eprintln!("exceed max use time");
-            return;
-        }
-
-        if !self.apply_object_info.is_meet_condition(&order.items) {
-            eprintln!("not meet apply condition");
-            return;
-        }
-
-        let bonus = self.apply_object_info.charge(order);
+        // let bonus = self.apply_object_info.charge(order);
 
 
     }
